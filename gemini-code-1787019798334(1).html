@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>10,000 Hours Meditation Tracker</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js for reactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center p-4" 
+      x-data="meditationTracker()">
+    
+    <div class="max-w-xl w-full bg-slate-800 rounded-2xl shadow-xl p-6 md:p-8 border border-slate-700">
+        <header class="mb-6 text-center">
+            <h1 class="text-2xl font-bold tracking-tight text-emerald-400">10,000 Hours Journey</h1>
+            <p class="text-sm text-slate-400 mt-1">Cloud Synced Tracker</p>
+            <p class="text-xs text-amber-400/80 mt-1" x-show="syncing">Syncing with cloud...</p>
+        </header>
+
+        <!-- Progress Overview -->
+        <div class="bg-slate-900/60 rounded-xl p-5 mb-6 border border-slate-700/50">
+            <div class="flex justify-between items-end mb-2">
+                <div>
+                    <span class="text-3xl font-extrabold text-white" x-text="totalHours.toFixed(1)"></span>
+                    <span class="text-sm text-slate-400">/ 10,000 hrs</span>
+                </div>
+                <div class="text-right">
+                    <span class="text-lg font-bold text-emerald-400" x-text="progressPercentage + '%'"></span>
+                    <p class="text-xs text-slate-400">Completed</p>
+                </div>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="w-full bg-slate-700 h-3 rounded-full overflow-hidden mb-4">
+                <div class="bg-emerald-500 h-full transition-all duration-500" :style="`width: ${progressPercentage}%`"></div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-2 gap-4 pt-3 border-t border-slate-700/60 text-center">
+                <div>
+                    <p class="text-xs text-slate-400 uppercase tracking-wider">Daily Average</p>
+                    <p class="text-lg font-semibold text-slate-200 mt-0.5"><span x-text="dailyAverageMinutes.toFixed(1)"></span> <span class="text-xs font-normal text-slate-400">mins/day</span></p>
+                </div>
+                <div>
+                    <p class="text-xs text-slate-400 uppercase tracking-wider">Est. Days Left</p>
+                    <p class="text-lg font-semibold text-slate-200 mt-0.5" x-text="estimatedDaysLeft"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Form -->
+        <form @submit.prevent="addSession" class="mb-6 flex gap-3">
+            <div class="relative flex-1">
+                <input type="number" 
+                       x-model.number="inputMinutes" 
+                       placeholder="Enter session duration..." 
+                       min="1" 
+                       required
+                       class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition">
+                <span class="absolute right-4 top-3.5 text-sm text-slate-400">minutes</span>
+            </div>
+            <button type="submit" 
+                    class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-6 py-3 rounded-xl transition shadow-lg shadow-emerald-900/20">
+                Log
+            </button>
+        </form>
+
+        <!-- Session History -->
+        <div>
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Recent Sessions</h2>
+                <button @click="clearHistory" x-show="sessions.length > 0" class="text-xs text-rose-400 hover:text-rose-300 transition">Clear History</button>
+            </div>
+            
+            <div class="space-y-2 max-h-48 overflow-y-auto pr-1">
+                <template x-for="(session, index) in sortedSessions" :key="session.id">
+                    <div class="flex justify-between items-center bg-slate-900/40 px-4 py-2.5 rounded-lg border border-slate-700/30 text-sm">
+                        <div>
+                            <span class="font-medium text-slate-200" x-text="session.minutes + ' minutes'"></span>
+                            <span class="text-xs text-slate-500 ml-2" x-text="session.date"></span>
+                        </div>
+                        <button @click="deleteSession(session.id)" class="text-slate-500 hover:text-rose-400 transition text-xs">Remove</button>
+                    </div>
+                </template>
+                <div x-show="sessions.length === 0" class="text-center py-6 text-slate-500 text-sm">
+                    No meditation sessions logged yet. Begin your practice above.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURATION: Replace these with your JSONbin.io credentials
+        const BIN_ID = '6a83e053da38895dfef14beb';
+        const API_KEY = '$2a$10$2e8FtAGpGrIBPNLoLGehLe8DfNfbqEIesVUnqGTxZKsOdC9nCkDjS';
+
+        function meditationTracker() {
+            return {
+                inputMinutes: '',
+                sessions: [],
+                syncing: false,
+
+                async init() {
+                    await this.fetchData();
+                },
+
+                async fetchData() {
+                    this.syncing = true;
+                    try {
+                        const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+                            headers: { 'X-Access-Key': API_KEY }
+                        });
+                        const data = await response.json();
+                        if (data && data.record && data.record.sessions) {
+                            this.sessions = data.record.sessions;
+                        }
+                    } catch (error) {
+                        console.error('Failed to load cloud data', error);
+                    }
+                    this.syncing = false;
+                },
+
+                async saveToCloud() {
+                    this.syncing = true;
+                    try {
+                        await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Access-Key': API_KEY
+                            },
+                            body: JSON.stringify({ sessions: this.sessions })
+                        });
+                    } catch (error) {
+                        console.error('Failed to save cloud data', error);
+                    }
+                    this.syncing = false;
+                },
+
+                async addSession() {
+                    if (!this.inputMinutes || this.inputMinutes <= 0) return;
+                    
+                    const newSession = {
+                        id: Date.now(),
+                        minutes: parseInt(this.inputMinutes),
+                        date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+                        timestamp: Date.now()
+                    };
+
+                    this.sessions.unshift(newSession);
+                    this.inputMinutes = '';
+                    await this.saveToCloud();
+                },
+
+                async deleteSession(id) {
+                    this.sessions = this.sessions.filter(s => s.id !== id);
+                    await this.saveToCloud();
+                },
+
+                async clearHistory() {
+                    if (confirm('Are you sure you want to clear all meditation history?')) {
+                        this.sessions = [];
+                        await this.saveToCloud();
+                    }
+                },
+
+                get totalMinutes() {
+                    return this.sessions.reduce((acc, curr) => acc + curr.minutes, 0);
+                },
+
+                get totalHours() {
+                    return this.totalMinutes / 60;
+                },
+
+                get progressPercentage() {
+                    const targetHours = 10000;
+                    const pct = (this.totalHours / targetHours) * 100;
+                    return Math.min(pct, 100).toFixed(2);
+                },
+
+                get dailyAverageMinutes() {
+                    if (this.sessions.length === 0) return 0;
+                    const timestamps = this.sessions.map(s => s.timestamp);
+                    const oldest = Math.min(...timestamps);
+                    const now = Date.now();
+                    const diffDays = Math.max(1, Math.ceil((now - oldest) / (1000 * 60 * 60 * 24)));
+                    return this.totalMinutes / diffDays;
+                },
+
+                get estimatedDaysLeft() {
+                    const remainingHours = 10000 - this.totalHours;
+                    if (remainingHours <= 0) return 'Goal Reached! 🎉';
+                    const avgDailyMins = this.dailyAverageMinutes;
+                    if (avgDailyMins <= 0) return 'Indefinite';
+                    const remainingMinutes = remainingHours * 60;
+                    const daysLeft = Math.ceil(remainingMinutes / avgDailyMins);
+                    if (daysLeft > 36500) return '100+ years';
+                    return `${daysLeft.toLocaleString()} days`;
+                },
+
+                get sortedSessions() {
+                    return [...this.sessions].sort((a, b) => b.timestamp - a.timestamp);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
